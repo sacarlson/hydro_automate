@@ -14,3 +14,5 @@ You will have to modify the token line in  the *.ino file to your token number t
 you will also have to modify the lines that include the wifi access point name and password to match your resedence settings.
 
 If you have any questions you can leave an issue here on github or try contact me on https://chat.funtracker.site/channel/hydro_automate
+
+Note: This project is also an example of how you can integrate OTA (Over The Air) firmware updates with just an esp8266 and the opensource version of Blynk.  To do this you do still have to be residing on the same wifi network to flash changes, not just anyplace on the internet like I think you can on the new version of Blynk.
