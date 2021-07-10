@@ -56,6 +56,14 @@
 #define pumpA D0
 #define pumpB D1
 
+// pump A and B calibration numbers
+// pump calibration is in mili seconds per mili Liter
+// this calibration method was used due to delay in c is in mili seconds and can be an int
+int pumpA_ms_per_mL = 668;
+int pumpB_ms_per_mL = 750;
+// to calibrate I manually control each pump to fill 100ml container and measure that time in seconds
+// example it takes pump B about 133 seconds to fill 100mL container so 1/(133sec/100mL*1000ms) = 751ms/mL
+
 float temperature=30;
 
 // for voltage accuracy at low end less than 1.7v set to 3.15 
@@ -66,18 +74,19 @@ float temperature=30;
 
 // You should get Auth Token in the Blynk App.
 // Go to the Project Settings (nut icon).
-char auth[] = "------
-Tupn_NL";
+//char auth[] = "WXJ4a-IN4I3jDSfhez7nsn8JzTupn_NL";
+// new version hydroponic_control blynk token
+char auth[] = "MuYphIVACLxc67wbfY1ZQoQ36BcpNGAd";
 
 // Your WiFi credentials for Blynk.
 // Set password to "" for open networks.
-char ssid[] = "wifi_ap_name";
-char pass[] = "wifi_password";
+char ssid[] = "FreeNet";
+char pass[] = "aaaabbbb";
 
 // your WiFi credentials for OTA, I had them set to the same network as blynk but maybe for security you want a different one for OTA.
 #ifndef STASSID
-#define STASSID "wifi_ap_name"
-#define STAPSK  "wifi_password"
+#define STASSID "FreeNet"
+#define STAPSK  "aaaabbbb"
 #endif
 
 const char* ssidota = STASSID;
@@ -89,7 +98,8 @@ WidgetLED led3(V10);
 WidgetLED led4(V11);
 
 int ledstate = 1;
-int pulse_time = 0;
+//int pulse_time = 0;
+int mL_dose = 0;
 int min_tds = 0;
 int auto_mode = 0;
 int max_dose = 0;
@@ -112,14 +122,15 @@ void myTimerEvent(){
   auto_feedback(tds);
   
   // led 1 - 3 active low led turns on
-  if (digitalRead(D5) == 1){
-    led1.off();
-  }else{
-    led1.on();
-  }
-  //led_set(1,digitalRead(D5));
+  //if (digitalRead(D5) == 1){
+  //  led1.off();
+  //}else{
+  //  led1.on();
+  //}
+  led_set(1,digitalRead(D5));
   led_set(2, digitalRead(D6)); 
   led_set(3, digitalRead(D7));
+  
   if (ledstate == 0){
     led4.off();
   }else{
@@ -146,33 +157,57 @@ void auto_feedback( float tds){
    }
 }
 
-void pulse_pump(){
-   Serial.println("pulse_time");
-   Serial.println(pulse_time);
-   if (pulse_time == 0){
+void pulse_pump(){  
+   Serial.println("mL_dose");
+   Serial.println(mL_dose);
+   if (mL_dose == 0){
      delay(200);
      Blynk.virtualWrite(V5,0);  
      return;
+   }   
+   if (pumpA_ms_per_mL<pumpB_ms_per_mL){
+     turn_on_dosage_pump_A();
+     turn_on_dosage_pump_B();
+     Serial.println("turn on pumps A and B for ms");
+     Serial.println(pumpA_ms_per_mL*mL_dose);
+     delay(pumpA_ms_per_mL*mL_dose);
+     turn_off_dosage_pump_A();
+     Serial.println("pump A turned off continue for ms");
+     Serial.println((pumpB_ms_per_mL*mL_dose)-(pumpA_ms_per_mL*mL_dose));
+     delay((pumpB_ms_per_mL*mL_dose)-(pumpA_ms_per_mL*mL_dose));
+     turn_off_dosage_pump_B();
+     Serial.println("turned off pump B");
+   }else{
+     turn_on_dosage_pump_A();
+     turn_on_dosage_pump_B();
+     Serial.println("turn on pumps A B for ms");
+     Serial.println(pumpB_ms_per_mL*mL_dose);
+     delay(pumpB_ms_per_mL*mL_dose);
+     turn_off_dosage_pump_B();
+     Serial.println("pump B turned off continue ms");
+     Serial.println((pumpA_ms_per_mL*mL_dose)-(pumpB_ms_per_mL*mL_dose));
+     delay((pumpA_ms_per_mL*mL_dose)-(pumpB_ms_per_mL*mL_dose));
+     turn_off_dosage_pump_A();
+     Serial.println("pump A turned off");
    }
-   turn_on_dosage_pumps();  
-   delay(pulse_time);
-   turn_off_dosage_pumps();
 }
 
 BLYNK_WRITE(V5){
-  // V5 is manual activate dose botton to pulse pump
+  // V5 is manual activate dose botton to pulse_pump()
   int value = param.asInt();
   pulse_pump();
-  // after pulse_pump() time turn off V5 button
+  // after pulse_pump() time completes turn off V5 button
   Blynk.virtualWrite(V5,0);  
 }
 
 BLYNK_WRITE(V6){
   // v6 returns mili Liter dosage entry to apply when pulse_pump is run
-  // pump puts out 1.33 mili Liter per second
-  // so pulse_time is 750 mili seconds per mili Liter
+  // pumps puts out about 1.33 mili Liter per second
+  // so pulse_time is about 750 mili seconds per mili Liter
   // pulse_time in mili seconds
-  pulse_time = (param.asInt()*750);
+  // we found that the pumps are not an exact rates.  We need to calibrate each one separately
+  // so now this just sets mL_dose instead, calibration values are added at pulse_pump()
+  mL_dose = param.asInt();
 }
 
 BLYNK_WRITE(V13){
@@ -196,12 +231,27 @@ BLYNK_WRITE(V15){
   Serial.println(max_dose);
 }
 
+BLYNK_WRITE(V17){
+ //V17 is pump A calibration factor ms/ml
+  pumpA_ms_per_mL = param.asInt();
+  Serial.println("pump A calibration override");
+  Serial.println(pumpA_ms_per_mL);
+}
+
+BLYNK_WRITE(V18){
+ //V18 is pump B calibration factor ms/ml
+  pumpB_ms_per_mL = param.asInt();
+  Serial.println("pump B calibration override");
+  Serial.println(pumpB_ms_per_mL);
+}
+
 void led_set(int led, int onoff){
   //Serial.println("onoff");
   //Serial.println(onoff);
   //Serial.println("led");
   //Serial.println(led);
   // led on active 0
+  onoff = !onoff;
   switch( led){
     case 1:
       if (onoff == 0){
@@ -230,22 +280,40 @@ void led_set(int led, int onoff){
 void read_liquid_level(){
   // note the liquid level switches will hook D5,D6,D7 to GND when float levels lift
   // d5 is lowest level in bucket, d6 is midle level, d7 is high level when water bucket full
-  int level = 3 - (digitalRead(D5) + digitalRead(D6) + digitalRead(D7));
+  //int level = 3 - (digitalRead(D5) + digitalRead(D6) + digitalRead(D7));
+  // seems in my case the level switches are reversed so taking out the 3 - here
+  // I also only ended up only using 2 of the level switches in the shallow reservoir pool (12 cm) so later I will remove D7
+  int level = (digitalRead(D5) + digitalRead(D6) + digitalRead(D7));
   Blynk.virtualWrite(V2, level);
 }
 
-void turn_on_dosage_pumps(){
+void turn_on_dosage_pump_A(){
   // turn on both dose pumps at the same time to apply same amount of both A and B hydro solutions at same time
-   Serial.println("turn on pumps");
+   Serial.println("turn on pump A");
    // relay module is active on low
    digitalWrite(pumpA, 0);
+   //digitalWrite(pumpB, 0);
+}
+
+void turn_on_dosage_pump_B(){
+  // turn on both dose pumps at the same time to apply same amount of both A and B hydro solutions at same time
+   Serial.println("turn on pump B");
+   // relay module is active on low
+   //digitalWrite(pumpA, 0);
    digitalWrite(pumpB, 0);
 }
 
-void turn_off_dosage_pumps(){
+void turn_off_dosage_pump_A(){
   // turn off both dose pumps
-   Serial.println("turn off pumps");
+   Serial.println("turn off pump A");
    digitalWrite(pumpA, 1);
+   //digitalWrite(pumpB, 1);
+}
+
+void turn_off_dosage_pump_B(){
+  // turn off both dose pumps
+   Serial.println("turn off pump B");
+   //digitalWrite(pumpA, 1);
    digitalWrite(pumpB, 1);
 }
 
@@ -308,18 +376,22 @@ void setup()
   //pinMode(GPIO1, OUTPUT);
   // D8 boot will fail if pulled high, is pulled to gnd
   //pinMode(D8, OUTPUT); // this can't drive an led without some problems
+  // These digital inputs are used to sense the liquid level switches to monitor reservoir fluid levels
   pinMode(D7, INPUT_PULLUP);
   pinMode(D6, INPUT_PULLUP);
   pinMode(D5, INPUT_PULLUP);
   pinMode(A0, INPUT);
 
-  digitalWrite(D0, HIGH);
-  digitalWrite(D1, HIGH);
-  digitalWrite(D2, HIGH);
-  digitalWrite(D3, HIGH);
+// these digital outputs are setup to drive the relay board
+// at power up we defalt them all to be turned off, HIGH is off on the relay board
+// this is good if we have a brown out and system resets it will auto shut off pump and cam and has to be manualy corrected on the app to turn them back on
+  digitalWrite(D0, HIGH); // 12v pump A 
+  digitalWrite(D1, HIGH); // 12v pump B
+  digitalWrite(D2, HIGH); // ac power control to monitor cam and air pump to shut down at night to save power due to solar power limitations
+  digitalWrite(D3, HIGH); // presently not used but could use to separate air pump and cam monitor at some point or other
 
   
-  turn_off_dosage_pumps();
+  //turn_off_dosage_pumps();
   
  // Blynk.begin(auth, ssid, pass);
   Blynk.begin(auth, ssid, pass, "www.funtracker.site", 8080);
@@ -334,8 +406,10 @@ void setup()
   Blynk.virtualWrite(V14,0);
   Blynk.virtualWrite(V13,0); 
   Blynk.virtualWrite(V15,0);  
-  Blynk.virtualWrite(V16,0);  
-  
+  Blynk.virtualWrite(V16,0);
+  Blynk.virtualWrite(V17,pumpA_ms_per_mL);
+  Blynk.virtualWrite(V18,pumpB_ms_per_mL);
+
   ArduinoOTA.onStart([]() {
     String type;
     if (ArduinoOTA.getCommand() == U_FLASH) {
